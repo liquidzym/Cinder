@@ -48,10 +48,10 @@ void ImageSourceFileRadiance::registerSelf()
 	ImageIoRegistrar::registerSourceType( "hdr", sourceFunc, 1 );
 }
 
-ImageSourceFileRadiance::ImageSourceFileRadiance( DataSourceRef dataSourceRef, ImageSource::Options options )
+ImageSourceFileRadiance::ImageSourceFileRadiance( DataSourceRef dataSourceRef, ImageSource::Options /*options*/ )
 {
 	IStreamRef stream = dataSourceRef->createStream();
-	
+
 	loadStream( stream );
 }
 
@@ -76,8 +76,16 @@ void ImageSourceFileRadiance::loadStream( IStreamRef stream )
 
 	char str[200];
 	stream->readData( str, 10 );
-	if( memcmp( str, "#?RADIANCE", 10 ) )
-		throw ImageSourceFileRadianceException( "Invalid header" );
+	if (memcmp(str, "#?RADIANCE", 10)) {
+		// check RBGE
+		if (memcmp(str, "#?RGBE", 6)) {
+			throw ImageSourceFileRadianceException("Invalid header");
+		}
+		else {
+			// move back the stream and continue parsing
+			stream->seekRelative(-4);
+		}
+	}
 
 	stream->seekRelative( 1 );
 
@@ -102,7 +110,7 @@ void ImageSourceFileRadiance::loadStream( IStreamRef stream )
 	}
 
 	int width, height;
-#if defined( CINDER_WINRT )
+#if defined( CINDER_UWP )
 	if( ! sscanf_s( resolution, "-Y %d +X %d", &height, &width ) )
 #else
 	if( ! sscanf( resolution, "-Y %d +X %d", &height, &width ) )
@@ -148,6 +156,10 @@ bool decrunchScanline( RgbePixel *scanline, int len, IStreamCinder *stream )
 {
 	char i;
 
+	// Early out if there's nothing more to read from the stream
+ 	if ( stream->isEof() )
+ 		 return false;
+
 	if( len < MINELEN || len > MAXELEN )
 		return oldStyleDecrunch(scanline, len, stream );
 
@@ -186,7 +198,9 @@ bool decrunchScanline( RgbePixel *scanline, int len, IStreamCinder *stream )
 		}
     }
 
-	return ! stream->isEof();
+	// NOTE: at this point on the **LAST** scanline, the stream
+	// should be EOF, but we still want to process that last scanline!
+	return true;
 }
 
 bool oldStyleDecrunch( RgbePixel *scanline, int len, IStreamCinder *stream )

@@ -33,6 +33,10 @@
 #include "cinder/Sphere.h"
 #include <algorithm>
 
+#if defined( CINDER_ANDROID )
+  #include "cinder/app/App.h"
+#endif
+
 using namespace std;
 
 namespace cinder { namespace geom {
@@ -82,7 +86,7 @@ Primitive Modifier::getPrimitive( const Modifier::Params &upstreamParams ) const
 	return upstreamParams.getPrimitive();
 }
 
-uint8_t	Modifier::getAttribDims( Attrib attr, uint8_t upstreamDims ) const
+uint8_t	Modifier::getAttribDims( Attrib /*attr*/, uint8_t upstreamDims ) const
 {
 	return upstreamDims;
 }
@@ -318,46 +322,66 @@ void copyData( uint8_t srcDimensions, const float *srcData, size_t numElements, 
 
 namespace { 
 template<typename T>
+bool indicesInRange( const uint32_t *indices, size_t numIndices, T indexOffset )
+{
+    for( size_t i = 0; i < numIndices; ++i )
+        if( indices[i] + indexOffset > std::numeric_limits<T>::max() )
+            return false;
+
+    return true;
+}
+
+template<>
+bool indicesInRange<uint32_t>( const uint32_t *indices, size_t numIndices, uint32_t indexOffset )
+{
+	return true;
+}
+
+template<typename T>
 void copyIndexDataForceTrianglesImpl( Primitive primitive, const uint32_t *source, size_t numIndices, T indexOffset, T *target )
 {
+	// verify that all indices are within the range expressible by 'T'
+	CI_ASSERT( indicesInRange<T>( source, numIndices, indexOffset ) );
+
 	switch( primitive ) {
 		case Primitive::LINES:
 		case Primitive::LINE_STRIP:
 		case Primitive::TRIANGLES:
-			if( indexOffset == 0 ) {
-				memcpy( target, source, sizeof(uint32_t) * numIndices );
-			}
+			if( indexOffset == 0 )
+				std::copy_n( source, numIndices, target );
 			else {
 				for( size_t i = 0; i < numIndices; ++i )
-					target[i] = source[i] + indexOffset;
+					target[i] = static_cast<T>( source[i] + indexOffset );
 			}
 		break;
 		case Primitive::TRIANGLE_STRIP: { // ABC, CBD, CDE, EDF, etc
+			CI_ASSERT( indexOffset == 0 ); // unsupported with TRIANGLE_STRIP
 			if( numIndices < 3 )
 				return;
 			size_t outIdx = 0; // (012, 213), (234, 435), etc : (odd,even), (odd,even), etc
 			for( size_t i = 0; i < numIndices - 2; ++i ) {
 				if( i & 1 ) { // odd
-					target[outIdx++] = source[i+1];
-					target[outIdx++] = source[i];
-					target[outIdx++] = source[i+2];
+					target[outIdx++] = static_cast<T>( source[i+1] );
+					target[outIdx++] = static_cast<T>( source[i] );
+					target[outIdx++] = static_cast<T>( source[i+2] );
 				}
 				else { // even
-					target[outIdx++] = source[i];
-					target[outIdx++] = source[i+1];
-					target[outIdx++] = source[i+2];
+					target[outIdx++] = static_cast<T>( source[i] );
+					target[outIdx++] = static_cast<T>( source[i+1] );
+					target[outIdx++] = static_cast<T>( source[i+2] );
 				}
 			}
 		}
 		break;
 		case Primitive::TRIANGLE_FAN: { // ABC, ACD, ADE, etc
+			CI_ASSERT( indexOffset == 0 ); // unsupported with TRIANGLE_FAN 
 			if( numIndices < 3 )
 				return;
 			size_t outIdx = 0;
 			for( size_t i = 0; i < numIndices - 2; ++i ) {
-				target[outIdx++] = source[0];
-				target[outIdx++] = source[i+1];
-				target[outIdx++] = source[i+2];
+				target[outIdx++] = static_cast<T>( source[0] );
+				target[outIdx++] = static_cast<T>( source[i+1] );
+				target[outIdx++] = static_cast<T>( source[i+2] );
 			}
 		}
 		break;
@@ -536,7 +560,7 @@ void Target::generateIndicesForceLines( Primitive primitive, size_t numInputIndi
 
 void Target::copyIndexData( const uint32_t *source, size_t numIndices, uint32_t *target )
 {
-	memcpy( target, source, numIndices * sizeof(float) );
+	memcpy( target, source, numIndices * sizeof(uint32_t) );
 }
 
 void Target::copyIndexData( const uint32_t *source, size_t numIndices, uint16_t *target )
@@ -1171,7 +1195,7 @@ AttribSet Icosahedron::getAvailableAttribs() const
 	return { Attrib::POSITION, Attrib::NORMAL, Attrib::COLOR, Attrib::TEX_COORD_0 };
 }
 
-void Icosahedron::loadInto( Target *target, const AttribSet &requestedAttribs ) const
+void Icosahedron::loadInto( Target *target, const AttribSet & /*requestedAttribs*/ ) const
 {
 	vector<vec3> positions, normals, colors;
 	vector<vec2> texcoords;
@@ -1699,7 +1723,7 @@ AttribSet Circle::getAvailableAttribs() const
 	return { Attrib::POSITION, Attrib::NORMAL, Attrib::TEX_COORD_0 };
 }
 
-void Circle::loadInto( Target *target, const AttribSet &requestedAttribs ) const
+void Circle::loadInto( Target *target, const AttribSet &/*requestedAttribs*/ ) const
 {
 	std::vector<vec2> positions, texCoords;
 	std::vector<vec3> normals;
@@ -1790,7 +1814,7 @@ AttribSet Ring::getAvailableAttribs() const
 	return{ Attrib::POSITION, Attrib::NORMAL, Attrib::TEX_COORD_0 };
 }
 
-void Ring::loadInto( Target *target, const AttribSet &requestedAttribs ) const
+void Ring::loadInto( Target *target, const AttribSet &/*requestedAttribs*/ ) const
 {
 	std::vector<vec2> positions, texCoords;
 	std::vector<vec3> normals;
@@ -1891,7 +1915,7 @@ void Sphere::loadInto( Target *target, const AttribSet &requestedAttribs ) const
 	normals.resize( numSegments * numRings );
 	texCoords.resize( numSegments * numRings );
 	colors.resize( numSegments * numRings );
-	indices.resize( numSegments * numRings * 6 );
+	indices.resize( (numSegments - 1) * (numRings - 1) * 6 );
 
 	float ringIncr = 1.0f / (float)( numRings - 1 );
 	float segIncr = 1.0f / (float)( numSegments - 1 );
@@ -3292,18 +3316,19 @@ void Extrude::loadInto( Target *target, const AttribSet &requestedAttribs ) cons
 ///////////////////////////////////////////////////////////////////////////////////////
 // Extrude
 ExtrudeSpline::ExtrudeSpline( const Shape2d &shape, const ci::BSpline<3,float> &spline, int splineSubdivisions, float approximationScale )
-	: mApproximationScale( approximationScale ), mFrontCap( true ), mBackCap( true ), mSubdivisions( splineSubdivisions )
+	: mApproximationScale( approximationScale ), mFrontCap( true ), mBackCap( true ), mSubdivisions( splineSubdivisions ), mThicknessFn( []( float ) { return 1.0f; } )
 {
 	for( const auto &contour : shape.getContours() )
 		mPaths.push_back( contour );
-
-	const float splineLength = spline.getLength( 0, 1 );
+	
+	const vec3 firstFrameEps = vec3( 0.0000001f );
+	mSplineLength = spline.getLength( 0, 1 );
 	vec3 prevPos = spline.getPosition( 0 );
 	vec3 prevTangent = spline.getDerivative( 0 );
-	mSplineFrames.emplace_back( firstFrame( prevPos, spline.getPosition( 0.1f ), spline.getPosition( 0.2f ) ) );
+	mSplineFrames.emplace_back( firstFrame( prevPos + firstFrameEps, spline.getPosition( 0.1f ), spline.getPosition( 0.2f ) ) );
 	mSplineTimes.push_back( 0 );
 	for( int sub = 1; sub <= mSubdivisions; ++sub ) {
-		const float t = spline.getTime( sub / (float)mSubdivisions * splineLength );
+		const float t = spline.getTime( sub / (float)mSubdivisions * mSplineLength );
 		const vec3 curPos = spline.getPosition( t );
 		const vec3 curTangent = normalize( spline.getDerivative( t ) );
 		mSplineFrames.emplace_back( nextFrame( mSplineFrames.back(), prevPos, curPos, prevTangent, curTangent ) );
@@ -3330,9 +3355,21 @@ void ExtrudeSpline::updatePathSubdivision()
 		mPathSubdivisionPositions.emplace_back( vector<vec2>() );
 		mPathSubdivisionTangents.emplace_back( vector<vec2>() );
 		path.subdivide( &mPathSubdivisionPositions.back(), &mPathSubdivisionTangents.back(), mApproximationScale );
+		
+		// Path2d::subdivide might returns duplicates
+		mPathSubdivisionPositions.back().erase( std::unique( mPathSubdivisionPositions.back().begin(), mPathSubdivisionPositions.back().end() ), mPathSubdivisionPositions.back().end() );	
+		mPathSubdivisionTangents.back().erase( std::unique( mPathSubdivisionTangents.back().begin(), mPathSubdivisionTangents.back().end() ), mPathSubdivisionTangents.back().end() );	
+
 		// normalize the tangents
 		for( auto& tan : mPathSubdivisionTangents.back() )
 			tan = normalize( tan );
+
+		// calculate path length
+		float pathLength = 0.0f;
+		for( size_t i = 1; i < mPathSubdivisionPositions.back().size(); ++i ) {
+			pathLength += glm::length( mPathSubdivisionPositions.back()[i-1] - mPathSubdivisionPositions.back()[i] );
+		}
+		mPathSubdivisionLengths.emplace_back( pathLength );
 	}
 
 	// Each of the subdivided paths' positions constitute a new contour on our triangulation
@@ -3353,22 +3390,22 @@ void ExtrudeSpline::calculate( vector<vec3> *positions, vector<vec3> *normals, v
 	if( mFrontCap ) {
 		const vec3 frontNormal = vec3( mSplineFrames.front() * vec4( 0, 0, -1, 0 ) );
 		for( size_t v = 0; v < mCap->getNumVertices(); ++v ) {
-			positions->emplace_back( mSplineFrames.front() * vec4( capPositions[v], 0, 1 ) );
+			positions->emplace_back( mSplineFrames.front() * vec4( capPositions[v] * mThicknessFn( 0.0f ), 0, 1 ) );
 			normals->emplace_back( frontNormal );
 			texCoords->emplace_back( vec3( ( capPositions[v].x - mCapBounds.x1 ) / mCapBounds.getWidth(),
 											1.0f - ( capPositions[v].y - mCapBounds.y1 ) / mCapBounds.getHeight(),
-											0 ) );
+											0 ) ); // the uv z-component allows to differentiate caps and extrusion
 		}
 	}
 	// back cap
 	if( mBackCap ) {
 		const vec3 backNormal = vec3( mSplineFrames.back() * vec4( 0, 0, 1, 0 ) );
 		for( size_t v = 0; v < mCap->getNumVertices(); ++v ) {
-			positions->emplace_back( mSplineFrames.back() * vec4( capPositions[v], 0, 1 ) );
+			positions->emplace_back( mSplineFrames.back() * vec4( capPositions[v] * mThicknessFn( 1.0f ), 0, 1 ) );
 			normals->emplace_back( backNormal );
 			texCoords->emplace_back( vec3( ( capPositions[v].x - mCapBounds.x1 ) / mCapBounds.getWidth(),
 											1.0f - ( capPositions[v].y - mCapBounds.y1 ) / mCapBounds.getHeight(),
-											1 ) );
+											0 ) ); // the uv z-component allows to differentiate caps and extrusion
 		}
 	}
 	
@@ -3390,7 +3427,7 @@ void ExtrudeSpline::calculate( vector<vec3> *positions, vector<vec3> *normals, v
 	// EXTRUSION
 	for( size_t p = 0; p < mPathSubdivisionPositions.size(); ++p ) {
 		for( int sub = 0; sub <= mSubdivisions; ++sub ) {
-			const mat4 &transform = mSplineFrames[sub];
+			const mat4 &transform = mSplineFrames[sub] * glm::scale( vec3( mThicknessFn( static_cast<float>( sub ) / static_cast<float>( mSubdivisions ) ) ) );
 			const auto &pathPositions = mPathSubdivisionPositions[p];
 			const auto &pathTangents = mPathSubdivisionTangents[p];
 			// add all the positions & normals
@@ -3398,9 +3435,9 @@ void ExtrudeSpline::calculate( vector<vec3> *positions, vector<vec3> *normals, v
 			for( size_t v = 0; v < pathPositions.size(); ++v ) {
 				positions->emplace_back( vec3( transform * vec4( pathPositions[v], 0, 1 ) ) );
 				normals->emplace_back( transform * vec4( vec2( pathTangents[v].y, -pathTangents[v].x ), 0, 0 ) );
-				texCoords->emplace_back( ( pathPositions[v].x - mCapBounds.x1 ) / mCapBounds.getWidth(),
-											1.0f - ( pathPositions[v].y - mCapBounds.y1 ) / mCapBounds.getHeight(),
-											mSplineTimes[sub] );
+				texCoords->emplace_back( (float) v / (float) ( pathPositions.size() ),
+										mSplineTimes[sub] * mSplineLength / mPathSubdivisionLengths[p],
+										1 ); // the uv z-component allows to differentiate caps and extrusion
 			}
 			// add the indices
 			if( sub != mSubdivisions ) {
@@ -3554,7 +3591,7 @@ AttribSet BSpline::getAvailableAttribs() const
 	return { Attrib::POSITION, Attrib::NORMAL };
 }
 
-void BSpline::loadInto( Target *target, const AttribSet &requestedAttribs ) const
+void BSpline::loadInto( Target *target, const AttribSet & /*requestedAttribs*/ ) const
 {
 	target->copyAttrib( Attrib::POSITION, mPositionDims, 0, mPositions.data(), mNumVertices );
 	target->copyAttrib( Attrib::NORMAL, 3, 0, (const float*)mNormals.data(), mNumVertices );
@@ -3651,7 +3688,7 @@ size_t WireCapsule::getNumVertices() const
 	return ( mNumSegments * ( mSubdivisionsHeight - 1 ) + subdivisionsAxis * ( 1 + 2 * numSegments ) ) * 2;
 }
 
-void WireCapsule::loadInto( Target *target, const AttribSet &requestedAttribs ) const
+void WireCapsule::loadInto( Target *target, const AttribSet &/*requestedAttribs*/ ) const
 {
 	std::vector<vec3> positions;
 
@@ -3673,7 +3710,7 @@ size_t WireCircle::getNumVertices() const
 	return mNumSegments + 1;
 }
 
-void WireCircle::loadInto( Target *target, const AttribSet &requestedAttribs ) const
+void WireCircle::loadInto( Target *target, const AttribSet &/*requestedAttribs*/ ) const
 {
 	size_t numVertices = getNumVertices();
 
@@ -3729,11 +3766,11 @@ void WireRoundedRect::updateVertexCount()
 		mCornerSubdivisions = (int)math<double>::floor( mCornerRadius * M_PI * 2 / 4 );
 	}
 	if( mCornerSubdivisions < 2 ) mCornerSubdivisions = 2;
-	
+
 	mNumVertices = (2 * ( mCornerSubdivisions + 1 ) * 4) + 1;
 }
-	
-void WireRoundedRect::loadInto( cinder::geom::Target *target, const AttribSet &requestedAttribs ) const
+
+void WireRoundedRect::loadInto( cinder::geom::Target *target, const AttribSet & /*requestedAttribs*/ ) const
 {
 	float cornerRadius = glm::max( 0.0f, glm::min( mCornerRadius, 0.5f * glm::min( mRectPositions.getWidth(), mRectPositions.getHeight() ) ) );
 
@@ -3762,13 +3799,45 @@ void WireRoundedRect::loadInto( cinder::geom::Target *target, const AttribSet &r
 			angle += angleDelta;
 		}
 	}
-	
+
 	target->copyAttrib( geom::Attrib::POSITION, 2, 0, value_ptr( *verts.data() ), verts.size() );
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////
+// WireRect
+WireRect::WireRect()
+{
+	// upper-left, upper-right, lower-right, lower-left & upper-left again to close the loop
+	mPositions[0] = vec2( -0.5f, -0.5f );
+	mPositions[1] = vec2( 0.5f, -0.5f );
+	mPositions[2] = vec2( 0.5f, 0.5f );
+	mPositions[3] = vec2( -0.5f, 0.5f );
+	mPositions[4] = vec2( -0.5f, -0.5f );
+}
+
+WireRect::WireRect( const Rectf &r )
+{
+	rect( r );
+}
+
+WireRect& WireRect::rect( const Rectf &r )
+{
+	mPositions[0] = r.getUpperLeft();
+	mPositions[1] = r.getUpperRight();
+	mPositions[2] = r.getLowerRight();
+	mPositions[3] = r.getLowerLeft();
+	mPositions[4] = r.getUpperLeft();
+	return *this;
+}
+
+void WireRect::loadInto( Target *target, const AttribSet & /*requestedAttribs*/ ) const
+{
+	target->copyAttrib( Attrib::POSITION, 2, 0, (const float*)mPositions.data(), 5 );
+}
+
+///////////////////////////////////////////////////////////////////////////////////////
 // WireCube
-void WireCube::loadInto( Target *target, const AttribSet &requestedAttribs ) const
+void WireCube::loadInto( Target *target, const AttribSet & /*requestedAttribs*/ ) const
 {
 	size_t numVertices = getNumVertices();
 
@@ -3848,6 +3917,14 @@ void WireCube::loadInto( Target *target, const AttribSet &requestedAttribs ) con
 
 ///////////////////////////////////////////////////////////////////////////////////////
 // WireCylinder
+WireCylinder& WireCylinder::set( const vec3 &from, const vec3 &to )
+{
+	const vec3 axis = ( to - from );
+	mHeight = length( axis );
+	mDirection = normalize( axis );
+	mOrigin = from;
+	return *this;
+}
 size_t WireCylinder::getNumVertices() const
 {
 	int subdivisionAxis = ( mSubdivisionsAxis > 1 ) ? mSubdivisionsAxis : 0;
@@ -3861,7 +3938,7 @@ size_t WireCylinder::getNumVertices() const
 	return ( subdivisionAxis + subdivisionHeight * mNumSegments ) * 2;
 }
 
-void WireCylinder::loadInto( Target *target, const AttribSet &requestedAttribs ) const
+void WireCylinder::loadInto( Target *target, const AttribSet & /*requestedAttribs*/ ) const
 {
 	size_t numVertices = getNumVertices();
 
@@ -3908,7 +3985,7 @@ size_t WireIcosahedron::getNumVertices() const
 	return 120;
 }
 
-void WireIcosahedron::loadInto( Target * target, const AttribSet & requestedAttribs ) const
+void WireIcosahedron::loadInto( Target * target, const AttribSet & /*requestedAttribs*/ ) const
 {
 	calculate();
 	target->copyAttrib( Attrib::POSITION, 3, 0, (const float*) sPositions.data(), 120 );
@@ -3936,7 +4013,7 @@ WireFrustum::WireFrustum( const CameraPersp &cam )
 	cam.getFarClipCoordinates( &ftl, &ftr, &fbl, &fbr );
 }
 
-void WireFrustum::loadInto( Target *target, const AttribSet &requestedAttribs ) const
+void WireFrustum::loadInto( Target *target, const AttribSet & /*requestedAttribs*/ ) const
 {
 	/*// extract camera position from view matrix, so that it will work with CameraStereo as well
 	//  see: http://www.gamedev.net/topic/397751-how-to-get-camera-position/page__p__3638207#entry3638207
@@ -4011,7 +4088,7 @@ WirePlane& WirePlane::axes( const vec3 &uAxis, const vec3 &vAxis )
 	return *this;
 }
 
-void WirePlane::loadInto( Target *target, const AttribSet &requestedAttribs ) const
+void WirePlane::loadInto( Target *target, const AttribSet & /*requestedAttribs*/ ) const
 {
 	size_t numVertices = getNumVertices();
 
@@ -4046,7 +4123,7 @@ size_t WireSphere::getNumVertices() const
 	return ( mSubdivisionsHeight - 1 ) * mNumSegments * 2 + ( ( mNumSegments + 1 ) / 2 ) * subdivisionAxis * 2;
 }
 
-void WireSphere::loadInto( Target *target, const AttribSet &requestedAttribs ) const
+void WireSphere::loadInto( Target *target, const AttribSet & /*requestedAttribs*/ ) const
 {
 	size_t numVertices = getNumVertices();
 
@@ -4099,7 +4176,7 @@ size_t WireTorus::getNumVertices() const
 	return ( subdivisionHeight + subdivisionAxis ) * mNumSegments * 2;
 }
 
-void WireTorus::loadInto( Target *target, const AttribSet &requestedAttribs ) const
+void WireTorus::loadInto( Target *target, const AttribSet & /*requestedAttribs*/ ) const
 {
 	size_t numVertices = getNumVertices();
 
@@ -4480,7 +4557,7 @@ void Subdivide::process( SourceModsContext *ctx, const AttribSet &requestedAttri
 	ctx->processUpstream( request );
 	
 	if( ctx->getPrimitive() != Primitive::TRIANGLES ) {
-		CI_LOG_E( "geom::PhongTessellate only supports TRIANGLES primitive." );
+		CI_LOG_E( "geom::Subdivide only supports TRIANGLES primitive." );
 		return;
 	}
 

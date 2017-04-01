@@ -13,22 +13,22 @@
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav</Extensions>
     </Filter>
     <Filter Include="Blocks">
-      <UniqueIdentifier>{1B3AB705-EB10-4426-ADEA-29024810719B}</UniqueIdentifier>
+      <UniqueIdentifier>{F58FA767-1FAB-4C7B-9E6E-E513C4DA43E9}</UniqueIdentifier>
     </Filter>
     <Filter Include="Blocks\Cairo">
-      <UniqueIdentifier>{9630DC2C-8456-476A-B75A-1944D5D7FC86}</UniqueIdentifier>
+      <UniqueIdentifier>{5853A04A-A780-4A53-85AC-00ADE5B44E62}</UniqueIdentifier>
     </Filter>
     <Filter Include="Blocks\Cairo\src">
-      <UniqueIdentifier>{476D94E7-2A7A-4435-9A33-274F88C256D5}</UniqueIdentifier>
+      <UniqueIdentifier>{BE3EE4A9-4764-41A9-A1A5-E97EE18C581F}</UniqueIdentifier>
     </Filter>
     <Filter Include="Blocks\Cairo\include">
-      <UniqueIdentifier>{4FE21829-5ECC-4B79-A4FC-CCD26CC9E447}</UniqueIdentifier>
+      <UniqueIdentifier>{88EDCFC5-E9DC-4713-BB14-6D8FE1580900}</UniqueIdentifier>
     </Filter>
     <Filter Include="Blocks\Cairo\include\cinder">
-      <UniqueIdentifier>{F50694EB-833E-40B2-9ED1-B6276B9239AB}</UniqueIdentifier>
+      <UniqueIdentifier>{1D133929-238E-47FE-B606-A3231668417D}</UniqueIdentifier>
     </Filter>
     <Filter Include="Blocks\Cairo\include\cinder\cairo">
-      <UniqueIdentifier>{516D8F4E-921C-474C-8077-4B25ACF409E1}</UniqueIdentifier>
+      <UniqueIdentifier>{CA8B12CF-E928-4AA0-8C28-7A800E1C1C52}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
